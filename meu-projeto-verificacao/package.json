@@ -1,9 +1,0 @@
-{
-  "name": "projeto-verificacao",
-  "version": "1.0.0",
-  "description": "Projeto de Verificação",
-  "main": "api/collect.js",
-  "dependencies": {
-    "mongodb": "^6.0.0"
-  }
-}
