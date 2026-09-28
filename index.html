@@ -30,30 +30,42 @@
     const API_ENDPOINT = "/api/collect"; 
 
     async function collectData() {
-        let ipAddress = "Desconhecido";
-        let userEmail = "Nao fornecido";
+    console.log("Iniciando coleta...");
+    let ipAddress = "Desconhecido";
+    let userEmail = "Nao fornecido";
 
-        try {
-            // 1. Captura o IP via API externa
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const ipData = await ipResponse.json();
-            ipAddress = ipData.ip;
+    try {
+        // Timeout de 5 segundos para não travar o site
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout na coleta')), 5000)
+        );
 
-            // 2. Tenta pegar o e-mail da URL (ex: seu-site.com/?email=teste@gmail.com)
-            const urlParams = new URLSearchParams(window.location.search);
-            userEmail = urlParams.get('email') || "Não fornecido";
+        // Tenta pegar o IP
+        const ipResponse = await Promise.race([
+            fetch('https://api.ipify.org?format=json'),
+            timeoutPromise
+        ]);
+        const ipData = await ipResponse.json();
+        ipAddress = ipData.ip;
 
-            // 3. Envia para a sua API (Back-end)
-            await sendToServer({
-                ip: ipAddress,
-                email: userEmail,
-                userAgent: navigator.userAgent,
-                timestamp: new Date().toISOString()
-            });
+        const urlParams = new URLSearchParams(window.location.search);
+        userEmail = urlParams.get('email') || "Não fornecido";
 
-        } catch (error) {
-            console.error("Erro na coleta:", error);
-            document.getElementById('status-text').innerText = "Erro na verificação. Tente novamente.";
+        console.log("Enviando dados para a API...");
+        
+        // Chama a API
+        await sendToServer({
+            ip: ipAddress,
+            email: userEmail,
+            userAgent: navigator.userAgent,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error("Erro na coleta (timeout ou rede):", error);
+        document.getElementById('status-text').innerText = "Erro na conexão. Tente novamente.";
+    }
+}
         }
     }
 
