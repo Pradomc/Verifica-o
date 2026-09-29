@@ -1,50 +1,71 @@
 import { MongoClient } from 'mongodb';
 
-// A Vercel vai ler essa variável que você configurou no painel dela
+// 1. A URI deve vir da Vercel (Variável de Ambiente)
 const uri = process.env.MONGODB_URI; 
-const client = new MongoClient(uri);
+
+// Variável global para reutilizar a conexão (cache)
+let cachedClient = null;
+let cachedDb = null;
+
+async function connectToDatabase() {
+  // Se já tiver uma conexão, retorna ela (economiza tempo e recursos)
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb };
+  }
+
+  // Se não tiver, cria uma nova conexão
+  const client = await MongoClient.connect(uri, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
+
+  const db = client.db('meu_projeto_db'); // Nome do seu banco
+
+  cachedClient = client;
+  cachedDb = db;
+
+  return { client, db };
+}
 
 export default async function handler(req, res) {
-    // 1. Só aceita requisições POST
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Método não permitido' });
-    }
+  // 2. Só aceita POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método não permitido' });
+  }
 
-    // 2. Pega os dados enviados pelo Front-end
-    const { ip, email, userAgent, timestamp } = req.body;
+  // 3. Desestruturação dos dados (Certifique-se que o front envia isso)
+  const { ip, email, userAgent, timestamp } = req.body;
 
-    if (!ip || !email) {
-        return res.status(400).json({ error: 'Dados insuficientes' });
-    }
+  if (!ip || !email) {
+    return res.status(400).json({ error: 'Dados insuficientes (IP ou Email faltando)' });
+  }
 
-    try {
-        // 3. Conecta ao MongoDB
-        await client.connect();
-        const database = client.db('meu_projeto_db'); 
-        const collection = database.collection('capturas'); 
+  try {
+    // 4. Conecta ao banco usando a função otimizada
+    const { db } = await connectToDatabase();
+    const collection = db.collection('capturas');
 
-        // 4. Salva o registro
-        const novoRegistro = {
-            ip,
-            email,
-            userAgent,
-            timestamp: timestamp || new Date().toISOString(),
-            data_coleta: new Date()
-        };
+    // 5. Prepara o objeto para salvar
+    const novoRegistro = {
+      ip,
+      email,
+      userAgent,
+      timestamp: timestamp || new Date().toISOString(),
+      data_coleta: new Date()
+    };
 
-        await collection.insertOne(novoRegistro);
+    // 6. Insere no MongoDB
+    const result = await collection.insertOne(novoRegistro);
 
-        // 5. Responde ao Front-end
-        return res.status(200).json({ 
-            status: 'sucesso', 
-            message: 'Dados salvos!' 
-        });
+    // 7. Responde ao seu site (Front-end)
+    return res.status(200).json({ 
+      status: 'sucesso', 
+      message: 'Dados salvos com sucesso!',
+      id: result.insertedId 
+    });
 
-    } catch (error) {
-        console.error("Erro no MongoDB:", error);
-        return res.status(500).json({ error: 'Erro interno no servidor' });
-    } finally {
-        // 6. Fecha a conexão
-        await client.close();
-    }
+  } catch (error) {
+    console.error("ERRO NO BACKEND:", error.message);
+    return res.status(500).json({ error: 'Erro interno no servidor ao salvar dados' });
+  }
 }
